@@ -14,7 +14,7 @@ CREATE TABLE sessions (
 	session_id INT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
    user_id INT UNSIGNED NOT NULL,
    created_on DATETIME DEFAULT CURRENT_TIMESTAMP,
-   updated_on DATETIME DEFAULT CURRENT_TIMESTAMP,
+   updated_on DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
    FOREIGN KEY (user_id) REFERENCES users(user_id)
 );
 
@@ -30,7 +30,7 @@ CREATE TABLE posts (
 	post_id INT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
 	user_id INT UNSIGNED NOT NULL,
 	created_on DATETIME DEFAULT CURRENT_TIMESTAMP,
-	updated_on DATETIME DEFAULT CURRENT_TIMESTAMP,
+	updated_on DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 	content MEDIUMTEXT
 );
 
@@ -38,8 +38,12 @@ CREATE TABLE notifications (
 	notification_id INT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
 	user_id INT UNSIGNED NOT NULL,
 	post_id INT UNSIGNED NOT NULL,
-	FOREIGN KEY (user_id) REFERENCES users(user_id),
+	FOREIGN KEY (user_id) REFERENCES users(user_id)
+		ON UPDATE CASCADE
+		ON DELETE CASCADE,
 	FOREIGN KEY (post_id) REFERENCES posts(post_id)
+		ON UPDATE CASCADE
+		ON DELETE CASCADE
 );
 
 CREATE OR REPLACE VIEW notification_posts AS (
@@ -101,5 +105,57 @@ CREATE TRIGGER new_user
 	FOR EACH ROW
 BEGIN
 	CALL new_user_notif(NEW.user_id, NEW.first_name, NEW.last_name);
+END$$
+DELIMITER ;
+
+
+CREATE EVENT clear_session
+ON SCHEDULE EVERY 10 SECOND
+DO
+	DELETE FROM
+		sessions
+	WHERE
+		TIMEDIFF(CURRENT_TIMESTAMP, updated_on) / 3600 > 2;
+		
+
+DELIMITER $$
+CREATE PROCEDURE add_post(IN user_id INT UNSIGNED, content MEDIUMTEXT)
+BEGIN
+
+	DECLARE new_post_id INT UNSIGNED;
+	DECLARE friends_id INT UNSIGNED;
+	DECLARE end_of_cursor TINYINT DEFAULT FALSE;
+	DECLARE friends_cursor CURSOR FOR
+		SELECT 
+			friend_id 
+		FROM 
+			friends 
+		WHERE
+			friends.user_id = user_id;
+	DECLARE CONTINUE HANDLER FOR NOT FOUND
+		SET end_of_cursor = TRUE;
+
+	INSERT INTO posts
+		(posts.user_id, posts.content)
+	VALUES
+		(user_id, content);
+	SET @new_post_id = LAST_INSERT_ID();
+		
+	OPEN friends_cursor;
+	friends_loop : LOOP
+	
+		FETCH friends_cursor INTO friends_id;
+		IF end_of_cursor THEN
+			LEAVE friends_loop;
+		END IF;
+		
+		INSERT INTO notifications
+			(user_id, post_id)
+		VALUES
+			(friends_id, @new_post_id);
+	
+	END LOOP friends_loop;
+	CLOSE friends_cursor;
+
 END$$
 DELIMITER ;
