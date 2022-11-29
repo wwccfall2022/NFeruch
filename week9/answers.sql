@@ -1,4 +1,4 @@
--- Create your tables, views, functions and procedures here!
+DROP SCHEMA IF EXISTS social;
 CREATE SCHEMA social;
 USE social;
 
@@ -31,8 +31,7 @@ CREATE TABLE posts (
 	user_id INT UNSIGNED NOT NULL,
 	created_on DATETIME DEFAULT CURRENT_TIMESTAMP,
 	updated_on DATETIME DEFAULT CURRENT_TIMESTAMP,
-	content MEDIUMTEXT,
-	FOREIGN KEY (user_id) REFERENCES users(user_id)
+	content MEDIUMTEXT
 );
 
 CREATE TABLE notifications (
@@ -51,9 +50,56 @@ CREATE OR REPLACE VIEW notification_posts AS (
 		posts.post_id,
 		posts.content
 	FROM
-		users
-		INNER JOIN posts
-			ON users.user_id = posts.user_id
-		INNER JOIN notifications AS notif
-			ON users.user_id = notif.user_id
+		posts
+		LEFT JOIN notifications AS notif
+			ON posts.post_id = notif.post_id
+		LEFT JOIN users
+			ON posts.user_id = users.user_id
 );
+
+
+DELIMITER $$
+CREATE PROCEDURE new_user_notif(IN new_id INT UNSIGNED, IN new_fname VARCHAR(255), IN new_lname VARCHAR(255))
+BEGIN
+	
+	DECLARE id INT UNSIGNED;
+	
+	DECLARE end_of_cursor TINYINT DEFAULT FALSE;
+	DECLARE user_cursor CURSOR FOR
+		SELECT user_id FROM users WHERE user_id != new_id;
+	DECLARE CONTINUE HANDLER FOR NOT FOUND
+		SET end_of_cursor = TRUE;
+		
+	INSERT INTO posts
+		(user_id, content)
+	VALUES
+		(new_id, CONCAT(new_fname, ' ', new_lname, ' just joined!'));
+		
+	OPEN user_cursor;
+	user_loop : LOOP
+	
+		FETCH user_cursor INTO id;
+		IF end_of_cursor THEN
+			LEAVE user_loop;
+		END IF;
+		
+		INSERT INTO notifications
+			(user_id, post_id)
+		VALUES
+			(id, (SELECT MAX(post_id) FROM posts));
+		
+	END LOOP user_loop;
+	CLOSE user_cursor;
+
+END$$
+DELIMITER ;
+
+
+DELIMITER $$
+CREATE TRIGGER new_user
+	AFTER INSERT ON users
+	FOR EACH ROW
+BEGIN
+	CALL new_user_notif(NEW.user_id, NEW.first_name, NEW.last_name);
+END$$
+DELIMITER ;
