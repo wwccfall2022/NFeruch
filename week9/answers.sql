@@ -14,16 +14,22 @@ CREATE TABLE sessions (
 	session_id INT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
    user_id INT UNSIGNED NOT NULL,
    created_on DATETIME DEFAULT CURRENT_TIMESTAMP,
-   updated_on DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+   updated_on DATETIME DEFAULT CURRENT_TIMESTAMP,
    FOREIGN KEY (user_id) REFERENCES users(user_id)
+   	ON UPDATE CASCADE
+   	ON DELETE CASCADE
 );
 
 CREATE TABLE friends (
 	user_friend_id INT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
 	user_id INT UNSIGNED NOT NULL,
 	friend_id INT UNSIGNED NOT NULL,
-	FOREIGN KEY (user_id) REFERENCES users(user_id),
+	FOREIGN KEY (user_id) REFERENCES users(user_id)
+		ON UPDATE CASCADE
+		ON DELETE CASCADE,
 	FOREIGN KEY (friend_id) REFERENCES users(user_id)
+		ON UPDATE CASCADE
+		ON DELETE CASCADE
 );
 
 CREATE TABLE posts (
@@ -55,9 +61,9 @@ CREATE OR REPLACE VIEW notification_posts AS (
 		posts.content
 	FROM
 		posts
-		LEFT JOIN notifications AS notif
+		INNER JOIN notifications AS notif
 			ON posts.post_id = notif.post_id
-		LEFT JOIN users
+		INNER JOIN users
 			ON posts.user_id = users.user_id
 );
 
@@ -115,7 +121,7 @@ DO
 	DELETE FROM
 		sessions
 	WHERE
-		TIMEDIFF(CURRENT_TIMESTAMP, updated_on) / 3600 > 2;
+		HOUR(TIMEDIFF(CURRENT_TIMESTAMP, updated_on)) > 2;
 		
 
 DELIMITER $$
